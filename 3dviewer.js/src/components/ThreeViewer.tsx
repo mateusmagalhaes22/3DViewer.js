@@ -17,7 +17,6 @@ const ThreeViewer = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedColor, setSelectedColor] = useState<string>('#4a90e2');
   
-  // Estados para propriedades do material
   const [materialProperties, setMaterialProperties] = useState({
     metalness: 0.0,
     roughness: 0.2,
@@ -42,7 +41,6 @@ const ThreeViewer = () => {
     }
   };
 
-  // Função para mudar as propriedades do material
   const changeMaterialProperties = (newProperties: typeof materialProperties) => {
     setMaterialProperties(newProperties);
     if (materialRef.current) {
@@ -56,8 +54,18 @@ const ThreeViewer = () => {
       materialRef.current.thickness = newProperties.thickness;
       materialRef.current.opacity = newProperties.opacity;
       
-      // Atualizar transparent flag se necessário
-      materialRef.current.transparent = newProperties.opacity < 1.0 || newProperties.transmission > 0.0;
+      const isTransparent = newProperties.opacity < 1.0 || newProperties.transmission > 0.0;
+      materialRef.current.transparent = isTransparent;
+      materialRef.current.depthWrite = !isTransparent;
+      
+      if (modelRef.current) {
+        modelRef.current.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.renderOrder = isTransparent ? 1 : 0;
+          }
+        });
+      }
+      
       materialRef.current.needsUpdate = true;
     }
   };
@@ -77,10 +85,19 @@ const ThreeViewer = () => {
     );
     camera.position.z = 5;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ 
+      antialias: true,
+      powerPreference: "high-performance" 
+    });
     renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.VSMShadowMap;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.autoUpdate = true;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1;
+    
+    renderer.sortObjects = true;
     rendererRef.current = renderer;
     mountRef.current.appendChild(renderer.domElement);
 
@@ -122,13 +139,41 @@ const ThreeViewer = () => {
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(10, 10, 5);
     directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
+
+    directionalLight.shadow.mapSize.width = 4096;
+    directionalLight.shadow.mapSize.height = 4096;
+    directionalLight.shadow.camera.near = 0.1;
+    directionalLight.shadow.camera.far = 50;
+    directionalLight.shadow.camera.left = -10;
+    directionalLight.shadow.camera.right = 10;
+    directionalLight.shadow.camera.top = 10;
+    directionalLight.shadow.camera.bottom = -10;
+    directionalLight.shadow.bias = -0.0001;
+    directionalLight.shadow.normalBias = 0.02;
+    directionalLight.shadow.radius = 4;
     scene.add(directionalLight);
+
+    const groundGeometry = new THREE.PlaneGeometry(20, 20);
+    const groundMaterial = new THREE.ShadowMaterial({ 
+      opacity: 0.3,
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -2;
+    ground.receiveShadow = true;
+    ground.renderOrder = -1;
+    scene.add(ground);
+
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+    fillLight.position.set(-5, 5, -5);
+    scene.add(fillLight);
 
     const loader = new GLTFLoader();
 
-    const modelUrl = '/Part Studio 1 - Part 1.gltf';
+    const modelUrl = '/saint benedict medal.gltf';
     
     setLoadingStatus('Loading 3D model...');
     
@@ -148,7 +193,10 @@ const ThreeViewer = () => {
           transmission: materialProperties.transmission,
           thickness: materialProperties.thickness,
           opacity: materialProperties.opacity,
-          transparent: materialProperties.opacity < 1.0 || materialProperties.transmission > 0.0
+          transparent: materialProperties.opacity < 1.0 || materialProperties.transmission > 0.0,
+          side: THREE.DoubleSide,
+          alphaTest: 0.001,
+          depthWrite: materialProperties.opacity >= 1.0 && materialProperties.transmission === 0.0, // Controlar depth writing
         });
         
         materialRef.current = plasticMaterial;
@@ -158,6 +206,13 @@ const ThreeViewer = () => {
             child.castShadow = true;
             child.receiveShadow = true;
             child.material = plasticMaterial;
+            
+            if (child.geometry) {
+              child.geometry.computeVertexNormals();
+            }
+            
+            const isTransparent = materialProperties.opacity < 1.0 || materialProperties.transmission > 0.0;
+            child.renderOrder = isTransparent ? 1 : 0;
           }
         });
         
