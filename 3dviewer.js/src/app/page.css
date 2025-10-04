@@ -1,0 +1,18 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    background: #ffffff;
+    color: #ffffff;
+}
+
+.app-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 90vh;
+    margin: 2%;
+    border-radius: 10px;
+    background: #ffe6ce;
+    padding: 0;
+    overflow: hidden;
+}
